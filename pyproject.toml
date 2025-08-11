@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "entcalcpy"
+version = "0.1.0"
+description = "Python package for computation of geometric entanglement"
+readme = "README.md"
+authors = [
+    { name = "Piotr Masajada", email = "maspiotr00@gmail.com" },
+    { name = "Aby Philip" },
+    { name = "Alexander Streltsov" }
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=2.24",
+    "scipy>=1.15.2",
+    "cvxpy>=1.6.4",
+    "qutip>=5.1.0"
+]
