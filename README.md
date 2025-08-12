@@ -16,7 +16,7 @@ pip install entcalcpy
 ```
 ## Dependencies
 This package requires the following Python packages:
-- `numpy` ≥ 2.24  
+- `numpy` ≥ 2.2.4  
 - `scipy` ≥ 1.15.2  
 - `cvxpy` ≥ 1.6.4  
 - `qutip` ≥ 5.1.0
