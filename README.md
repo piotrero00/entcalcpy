@@ -22,6 +22,7 @@ This package requires the following Python packages:
 - `qutip` ≥ 5.1.0
 ## Getting started
 To get started with entcalcpy, we recommend checking the examples section. The documentation is written in docstrings.
+Below we present some basic usage of functions.
 For example, the following code computes the upper bound of the geometric entanglement of a random quantum state.
 ```python
 import qutip
