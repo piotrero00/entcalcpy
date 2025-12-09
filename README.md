@@ -39,7 +39,9 @@ rho=qutip.rand_dm(8)
 print(en.ge_mixed_gr(rho,[2,2,2])) #second argument specifies that we have a 3-qubit state
 print(en.ge_mixed_gr(rho,[4,2])) #here we have a 4x2 bipartite state
 ```
-The lower bound can be computed using four different methods.
+## Different lower bounds
+The lower bound can be computed using four different methods. The best lower bound gives ge_mixed_gr, for a trade-off between accuracy and speed of computation one should use ge_mixed_sm or gekppt with small k. For a quick, but not always tight bound
+ one should use geppt.
 ## ge_mixed_gr vs ge_mixed_ra_gr
 ge_mixed_gr and ge_mixed_sm as a first step computes a purification of the input state. They do it by so-called canonical purification. 
 ge_mixed_ra_gr takes input state in the form of orthogonal decomposition. Thanks to it, it can compute lower-dimensional purification and compute
