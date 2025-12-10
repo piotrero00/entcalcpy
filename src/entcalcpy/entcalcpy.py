@@ -255,7 +255,7 @@ def ge_pure(rho,dim,sdpaccuracy=10**(-14),itera=5000, solversdp="SCS"):
         accura=0
         
     else:
-        if n==3:
+       
             acc=4*(n-2)*np.sqrt(ep)             #Formula for error shown in the paper appendix
             accura=float(acc)
         
@@ -2518,5 +2518,6 @@ def uppermult(rho,dim,iteramax=2000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fal
         return [float(1-F),q,sq_mat]
     else:
         return float(1-F)
+
 
 
