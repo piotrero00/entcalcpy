@@ -58,4 +58,15 @@ Special thanks to Krystyna Mordzińska for coming up with the package name after
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
 ## Citing
-If you use entcalcpy in academic work, please cite this package.
+If you use entcalcpy in academic work, please cite this package. Below we provide bibtex version of citation.
+```latex
+@misc{masajada2025entcalctoolkitcalculatinggeometric,
+      title={ENTCALC: Toolkit for calculating geometric entanglement in multipartite quantum systems}, 
+      author={Piotr Masajada and Aby Philip and Alexander Streltsov},
+      year={2025},
+      eprint={2512.10884},
+      archivePrefix={arXiv},
+      primaryClass={quant-ph},
+      url={https://arxiv.org/abs/2512.10884}, 
+}
+```
