@@ -56,7 +56,7 @@ If you find any issues, we encourage you to report them via GitHub or by emailin
 ## Acknowledgment
 Special thanks to Krystyna Mordzińska for coming up with the package name after a creative brainstorming session.
 ## License
-This project is licensed under the BSD 3-Clause "New" or "Revised" License.
+This project is licensed under the BSD 3-Clause License.
 ## Citing
 If you use entcalcpy in academic work, please cite this package. Below we provide bibtex version of citation.
 ```latex
