@@ -21,7 +21,7 @@ This package requires the following Python packages:
 - `cvxpy` ≥ 1.6.4  
 - `qutip` ≥ 5.1.0
 ## Getting started
-To get started with entcalcpy, we recommend checking the examples section. The documentation is written in docstrings.
+To get started with entcalcpy, we recommend going through the examples section, where we explain how to use each of the function. The documentation is written in docstrings.
 Below we present some basic usage of functions.
 For example, the following code computes the upper bound of the geometric entanglement of a random quantum state.
 ```python
@@ -41,7 +41,11 @@ print(en.ge_mixed_gr(rho,[4,2])) #here we have a 4x2 bipartite state
 ```
 ## Different lower bounds
 The lower bound can be computed using four different methods. The best lower bound gives ge_mixed_gr, for a trade-off between accuracy and speed of computation one should use ge_mixed_sm or gekppt with small k. For a quick, but not always tight bound
- one should use geppt.
+ one should use geppt. Below we present connections between lower bounds described in the entcalc paper and functions of the package.
+ * **`geppt`** - lower bound 1 in the paper
+* **`gekppt`** - lower bound 2 in the paper
+* **`ge_mixed_sm`** - lower bound 3 in the paper
+* **`ge_mixed_gr`** - lower bound 4 in the paper
 ## ge_mixed_gr vs ge_mixed_ra_gr
 ge_mixed_gr and ge_mixed_sm as a first step computes a purification of the input state. They do it by so-called canonical purification. 
 ge_mixed_ra_gr takes input state in the form of orthogonal decomposition. Thanks to it, it can compute lower-dimensional purification and compute
