@@ -39,6 +39,25 @@ rho=qutip.rand_dm(8)
 print(en.ge_mixed_gr(rho,[2,2,2])) #second argument specifies that we have a 3-qubit state
 print(en.ge_mixed_gr(rho,[4,2])) #here we have a 4x2 bipartite state
 ```
+## Mixed vs pure states
+
+For computing the geometric entanglement of pure states, entcalcpy provides the **`ge_pure`** function. It returns a list where the first element is a rigorous lower bound on the geometric entanglement. The second element is the estimation error—the exact distance from the lower bound within which the true value of the geometric entanglement is guaranteed to lie.
+
+For mixed states, there is no single function. Instead, one must compute the lower and upper bounds separately using dedicated functions. 
+
+Functions for computing the **lower bound**:
+* **`geppt`**
+* **`gekppt`**
+* **`ge_mixed_sm`**
+* **`ge_mixed_gr`**
+* **`ge_mixed_ra_gr`**
+* **`ge_mixed_ra_sm`**
+  
+  Functions for computing the **upper bound**:
+* **`upperbip`**
+* **`uppersame`**
+* **`uppermult`**
+
 ## Different lower bounds
 The lower bound can be computed using four different methods. The best lower bound gives ge_mixed_gr, for a trade-off between accuracy and speed of computation one should use ge_mixed_sm or gekppt with small k. For a quick, but not always tight bound
  one should use geppt. Below we present connections between lower bounds described in the entcalc paper and functions of the package.
