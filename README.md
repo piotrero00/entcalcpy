@@ -78,7 +78,7 @@ entcalcpy can use two solvers: "SCS" and "MOSEK". "SCS" is installed by default 
 If this happens, we highly recommend using "MOSEK". It is a commercial solver, but one can obtain a license for free for academic purposes.
 ## Numerical precision and troubleshooting
 
-Due to finite numerical precision, in rare cases entcalc/entcalcpy may return
+Due to finite numerical precision, in rare cases entcalcpy may return
 a lower bound that is slightly larger than the corresponding upper bound.
 This does not indicate a violation of the theoretical bounds when the
 difference is comparable to the numerical accuracy of the computation.
