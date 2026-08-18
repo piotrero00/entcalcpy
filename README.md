@@ -6,7 +6,7 @@ These bounds are often close to each other, allowing us to estimate the value of
 - [Installation](#installation)
 - [Dependencies](#dependencies)
 - [Getting started](#getting-started)
-- [Numerical precision and troubleshooting] (#Numerical-precision-and-troubleshooting)
+- [Numerical precision and troubleshooting](#Numerical-precision-and-troubleshooting)
 - [Issues](#issues)
 - [Acknowledgment](#acknowledgment)
 - [License](#license)
