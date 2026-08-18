@@ -6,6 +6,7 @@ These bounds are often close to each other, allowing us to estimate the value of
 - [Installation](#installation)
 - [Dependencies](#dependencies)
 - [Getting started](#getting-started)
+- [Numerical precision and troubleshooting] (#Numerical-precision-and-troubleshooting)
 - [Issues](#issues)
 - [Acknowledgment](#acknowledgment)
 - [License](#license)
@@ -75,6 +76,34 @@ ge_mixed_ra_gr takes input state in the form of orthogonal decomposition. Thanks
 entcalcpy can use two solvers: "SCS" and "MOSEK". "SCS" is installed by default alongside cvxpy. For some complex problems, it may need a long time to find a solution. If the solution is not found within the given iteration limit, it returns a message indicating that the solution might be inaccurate. In that scenario, the result might be artificially higher than the true lower bound.
 
 If this happens, we highly recommend using "MOSEK". It is a commercial solver, but one can obtain a license for free for academic purposes.
+## Numerical precision and troubleshooting
+
+Due to finite numerical precision, in rare cases entcalc/entcalcpy may return
+a lower bound that is slightly larger than the corresponding upper bound.
+This does not indicate a violation of the theoretical bounds when the
+difference is comparable to the numerical accuracy of the computation.
+
+For numerically demanding states, the practical accuracy of the lower-bound
+SDP may be approximately 1e-7, even when stricter internal solver tolerances
+are requested. The upper-bound computation has a numerical accuracy of
+approximately 1e-8.
+
+If the lower bound exceeds the upper bound:
+
+1. Check the solver status. If the solution is reported as inaccurate,
+   increase the maximum number of iterations or adjust the requested solver
+   precision.
+
+2. For high-precision calculations, use MOSEK and the high-precision setting.
+
+3. If the discrepancy persists, cross-check the lower bound with a second
+   SDP solver. For the MATLAB implementation, MOSEK and SDPT3 can be used.
+   The smaller of the two lower-bound estimates provides the conservative
+   result.
+
+A discrepancy of approximately 1e-7 or smaller should normally be regarded
+as a numerical precision artifact. If substantially higher precision is
+required, we recommend using the MOSEK API directly.
 ## Issues
 If you find any issues, we encourage you to report them via GitHub or by emailing maspiotr00@gmail.com.
 ## Acknowledgment
