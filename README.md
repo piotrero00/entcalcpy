@@ -97,13 +97,10 @@ If the lower bound exceeds the upper bound:
 2. For high-precision calculations, use MOSEK and the high-precision setting.
 
 3. If the discrepancy persists, cross-check the lower bound with a second
-   SDP solver. For the MATLAB implementation, MOSEK and SDPT3 can be used.
-   The smaller of the two lower-bound estimates provides the conservative
-   result.
+   SDP solver. 
 
-A discrepancy of approximately 1e-7 or smaller should normally be regarded
-as a numerical precision artifact. If substantially higher precision is
-required, we recommend using the MOSEK API directly.
+A discrepancy of the order 1e-7 or smaller should normally be regarded
+as a numerical precision artifact. 
 ## Issues
 If you find any issues, we encourage you to report them via GitHub or by emailing maspiotr00@gmail.com.
 ## Acknowledgment
