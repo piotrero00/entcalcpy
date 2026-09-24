@@ -255,7 +255,7 @@ def ge_pure(rho,dim,sdpaccuracy=10**(-14),itera=5000, solversdp="SCS"):
         accura=0
         
     else:
-       
+        
             acc=4*(n-2)*np.sqrt(ep)             #Formula for error shown in the paper appendix
             accura=float(acc)
         
@@ -382,9 +382,7 @@ def ge_mixed_sm (state,dim,sdpaccuracy=10**(-8),itera=5000, solversdp="SCS"):#fa
     evals = state.eigenenergies()
     if not np.all(evals >= -10**(-10)):
         raise Exception("State must be represented by a positive-semidefinite matrix.")
-
-    if abs(state.tr()-1)>10**(-10):
-        raise Exception("State should be normalized")
+    
     if itera<0:
         raise Exception("itera must be an integer greater than 0")
     if not isinstance(itera, int):
@@ -571,8 +569,7 @@ def ge_mixed_gr (state,dim,sdpaccuracy=10**(-8),itera=5000, solversdp="SCS"):#fa
         raise Exception("State must be represented by a positive-semidefinite matrix.")
    
     
-    if abs(state.tr()-1)>10**(-10):
-        raise Exception("State should be normalized")
+    
     if itera<0:
         raise Exception("itera must be an integer greater than 0")
     if not isinstance(itera, int):
@@ -1637,7 +1634,64 @@ def gekppt(rho,dim,k,sdpaccuracy=10**(-8),itera=5000,solversdp="SCS"):
 
 
 
+def product_factors_from_sq_mat(sq_mat, dim):
+    """
+    Reconstruct local product factors from the columns of sq_mat.
 
+    sq_mat[:, i] represents a product state
+
+        |phi_i> = |a_i> tensor |b_i> tensor ...
+
+    Returns
+    -------
+    sql : list
+        sql[i][j] is the local state of subsystem j
+        for product state i.
+    """
+
+    sq_mat = np.asarray(sq_mat, dtype=complex)
+
+    r = sq_mat.shape[1]
+    n_subsystems = len(dim)
+
+    sql = []
+
+    for i in range(r):
+
+        phi = qutip.Qobj(
+            sq_mat[:, i],
+            dims=[dim, [1] * n_subsystems]
+        )
+
+        factors = []
+
+        for ni in range(n_subsystems):
+
+            # For a product pure state the reduced state is pure.
+            rho_local = phi.ptrace(ni)
+
+            eigvals, eigvecs = rho_local.eigenstates(sort="high")
+
+            factor = eigvecs[0].unit()
+            factor.dims = [[dim[ni]], [1]]
+
+            factors.append(factor)
+
+        # ----------------------------------------------------
+        # Fix the irrelevant global phase so that
+        # tensor(*factors) is aligned with the original ket.
+        # ----------------------------------------------------
+
+        reconstructed = qutip.tensor(*factors)
+
+        overlap = reconstructed.overlap(phi)
+
+        if abs(overlap) > 0:
+            factors[0] *= overlap / abs(overlap)
+
+        sql.append(factors)
+
+    return sql
 
 
 def upperbip(rho,dim,iteramax=3000,dif=10**(-7),r=None,qs=None,sqs=None,dec=False):
@@ -1734,8 +1788,8 @@ def upperbip(rho,dim,iteramax=3000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fals
         raise ValueError("r should be an integer")
     if (not isinstance(dif,float)) or not (0<dif<1):
         raise ValueError("dif should be in interval (0,1)")
-    if (qs is None and (not sqs is None)) or (sqs is None and not (sqs is None)):
-        raise Exception("Both or none of the qs, sqs must be None.")
+    if (qs is None) != (sqs is None):
+        raise ValueError("Both or neither of qs and sqs must be provided.")
     if not (sqs is None) and r!=len(sqs.T):
         raise Exception("sqs and r should have the same number of elements")
     if not (qs is None) and r!=len(qs):
@@ -1794,6 +1848,18 @@ def upperbip(rho,dim,iteramax=3000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fals
         q=qs
         sq_mat=sqs
     sp_mat = np.column_stack([s.full().ravel() for s in sp])  # shape: (d, n²)
+    rhomm = rho.full()
+    rhomm = 0.5 * (rhomm + rhomm.conj().T)
+
+    rho_evals, rho_evecs = np.linalg.eigh(rhomm)
+    support = rho_evals > 1e-15
+
+    rho_support_vecs = rho_evecs[:, support]
+    sqrt_support_vals = np.sqrt(rho_evals[support])
+
+    roundoff_tol = (
+        100 * np.finfo(float).eps * max(1, len(sqrt_support_vals))
+    )
 
     while abs(Fp-F)>dif and itera<iteramax:
         itera+=1
@@ -1825,75 +1891,95 @@ def upperbip(rho,dim,iteramax=3000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fals
 
         alfa  = u @ sp_weighted
 
-        pp=np.zeros(r,dtype=float)
-        spp=[]
-        for i in range(r):
-            pp[i]=np.linalg.norm(alfa[i])**2
-            spp.append(qutip.Qobj(alfa[i]/np.sqrt(pp[i])))   #updating decomposition of rho
-            spp[i].dims=[dim,[1,1]]
+        alpha_norms = np.linalg.norm(alfa, axis=1)
+        pp = alpha_norms**2
 
-#print(spp[len(sq)-1])
-        
-        for i in range(r):
-                theta0=spp[i].ptrace(0)
-                ccc=theta0.eigenstates(sort='high')
-                cc=ccc[1][0]                                  #update separable decompsition
-                theta1=spp[i].ptrace(1)
-                ddd=theta1.eigenstates(sort='high')
-                dd=ddd[1][0]
-                sq1[i]=cc
-                sq2[i]=dd
+        # We normalize only non-zero coefficients
+        nonzero = alpha_norms > 0.0
+        spp_matri = np.empty_like(alfa, dtype=complex)
+
+        spp_matri[nonzero] = (
+            alfa[nonzero] / alpha_norms[nonzero, None]
+        )
+
+        #If there is zero-weight we keep the old coefficient
+        spp_matri[~nonzero] = sq_mat[:, ~nonzero].T
+
+        # Previous product states for 0weight coefficients
+        sq_rows = np.array(sq_mat.T, dtype=complex, copy=True)
+
+        for i in np.flatnonzero(nonzero):
+            coefficients = spp_matri[i].reshape(dim[0], dim[1])
+
+            left, _, right_h = np.linalg.svd(
+                coefficients, full_matrices=False
+            )
+
             
+            sq_rows[i] = np.kron(left[:, 0], right_h[0, :])
 
-        qq=np.zeros(r,dtype=float)
-        sss = 0
-        overlaps = np.empty(r, dtype=float)
-        sq111_mat = np.column_stack([s.full().ravel() for s in sq1]).T  # shape: (d, n²)
-        sq222_mat = np.column_stack([s.full().ravel() for s in sq2]).T  # shape: (d, n²)
-        sq_mat = np.einsum('ij,ik->ijk', sq111_mat, sq222_mat).reshape(r, n)
+        sq_mat = sq_rows
 
+        overlaps = np.abs(
+            np.einsum("ij,ij->i", spp_matri.conj(), sq_mat)
+        )**2
 
-        spp_matri = np.column_stack([s.full().ravel() for s in spp]).T
-        ov=np.conj(spp_matri) @ sq_mat.T
-        overlaps=np.diag(ov)
-        overlaps = abs(overlaps)**2
-        
-        sss=sum(pp*overlaps)
+        qq = pp * overlaps
+        sss = qq.sum()
 
+        if not np.isfinite(sss) or sss <= 0.0:
+            raise FloatingPointError(
+                f"Cannot normalize qq in iteration {itera}: sss={sss}"
+            )
 
-        
+        qq /= sss
 
-        
-        qq=pp*overlaps/sss
-        
+        #Updated separable state sigma.
+        als_np = np.einsum(
+            "i,ij,ik->jk", qq, sq_mat, sq_mat.conj()
+        )
 
+        #Computing fidelity
+        sigma_support = (
+            rho_support_vecs.conj().T
+            @ als_np
+            @ rho_support_vecs
+        )
 
-        als_np = np.zeros((n, n), dtype=complex)
-        als_np = np.einsum('i,ij,ik->jk', qq, sq_mat, np.conj(sq_mat))
-        
-        
-        rhomm = rho.full()
-        root_rho = scipy.linalg.sqrtm(rhomm)
-        inner = root_rho @ als_np @ root_rho
-        root_inner = scipy.linalg.sqrtm(inner)
-        Fp=F
+        inner_support = (
+            sqrt_support_vals[:, None]
+            * sigma_support
+            * sqrt_support_vals[None, :]
+        )
 
-        F = np.real(np.trace(root_inner) ** 2)   #Computing fidelity
+        inner_support = 0.5 * (
+            inner_support + inner_support.conj().T
+        )
+
+        inner_evals = np.linalg.eigvalsh(inner_support)
+
+        if inner_evals.min(initial=0.0) < -roundoff_tol:
+            raise FloatingPointError(
+                f"sqrt(rho) sigma sqrt(rho) is not PSD "
+                f"in iteration {itera}: "
+                f"minimum eigenvalue = {inner_evals.min()}"
+            )
+
+        inner_evals = np.clip(inner_evals, 0.0, None)
+
+        Fp = F
+        F = float(np.sum(np.sqrt(inner_evals))**2)
         
         sp_mat=copy.deepcopy(spp_matri.T)
         p=copy.deepcopy(pp)
         q=copy.deepcopy(qq)
         sq_mat=copy.deepcopy(sq_mat.T)
 
-    #Delating small numerical inprecisions
-    inner=qutip.Qobj(inner)
-    inner.tidyup()
-    root_inner = inner.sqrtm()
-    F = np.real((root_inner.tr()) ** 2) 
+    
     if dec:
-        return [1-F,q,sq_mat]
+        return [float(1-F),q,sq_mat]
     else:
-        return 1-F
+        return float(1-F)
 
 
 
@@ -2054,8 +2140,8 @@ def uppersame(rho,dim,iteramax=2500,dif=10**(-8),r=None,qs=None,sqs=None,dec=Fal
         raise ValueError("r should be an integer")
     if (not isinstance(dif,float)) or not (0<dif<1):
         raise ValueError("dif should be in interval (0,1)")
-    if (qs is None and (not sqs is None)) or (sqs is None and not (sqs is None)):
-        raise Exception("Both or none of the qs, sqs must be None.")
+    if (qs is None) != (sqs is None):
+        raise ValueError("Both or neither of qs and sqs must be provided.")
     if not (sqs is None) and r!=len(sqs.T):
         raise Exception("sqs and r should have the same number of elements")
     if not (qs is None) and r!=len(qs):
@@ -2081,7 +2167,7 @@ def uppersame(rho,dim,iteramax=2500,dif=10**(-8),r=None,qs=None,sqs=None,dec=Fal
     pqp=pqp/sum(pqp)
     if r<licznik:
         raise Exception(f"Number r of vectors in decomposition is too small to represent rho. The number of non-zero eigenvalues of rho is {licznik}")
-    p=np.zeros(r,dtype=float)
+    
     if licznik<=r<licznik**(2):
         warnings.warn("r is smaller than rank(rho)**(2), the output might be less precise")
     p=np.zeros(r,dtype=float)
@@ -2094,31 +2180,92 @@ def uppersame(rho,dim,iteramax=2500,dif=10**(-8),r=None,qs=None,sqs=None,dec=Fal
     for i in range(r-min([r,n])):
         sp.append(qutip.Qobj(np.zeros(n)))
     for i in range(r):
-        sp[i].dims=[dim,[1,1]]
-    sql=[]
-    for i in range(r):
-            sqo=[]
-            for iu in range(len(dim)):                   #Setting initial separable decomposition
-                sta=random_haar_state(dim[iu])          
-                sqo.append(sta)
-            sql.append(sqo)
+        sp[i].dims = [dim, [1] * len(dim)]
+    # ============================================================
+    # Initial separable decomposition
+    # ============================================================
+
     if qs is None:
-        
-        
-        sq=[tensor(*kets) for kets in zip(sql)]
-        q=np.random.rand(r)
-        q=q/sum(q)
-        sq_mat = np.column_stack([s.full().ravel() for s in sq])  # shape: (d, n²)
+
+        # --------------------------------------------------------
+        # No warm start:
+        # generate a random separable decomposition
+        # --------------------------------------------------------
+
+        sql = []
+
+        for i in range(r):
+
+            factors = []
+
+            for iu in range(len(dim)):
+
+                sta = random_haar_state(dim[iu])
+                sta.dims = [[dim[iu]], [1]]
+
+                factors.append(sta)
+
+            sql.append(factors)
+
+        # Full product states
+        sq = [
+            tensor(*factors)
+            for factors in sql
+        ]
+
+        q = np.random.rand(r)
+        q = q / np.sum(q)
+
+        sq_mat = np.column_stack(
+            [s.full().ravel() for s in sq]
+        )
+
+
     else:
-        q=qs
-        sq_mat = sqs
+
+        # --------------------------------------------------------
+        # FULL WARM START
+        # --------------------------------------------------------
+
+        q = np.array(
+            qs,
+            dtype=float,
+            copy=True
+        )
+
+        sq_mat = np.array(
+            sqs,
+            dtype=complex,
+            copy=True
+        )
+
+        # Recover the local factors of the old product states.
+        #
+        # This is the crucial difference from the previous version.
+        # Local optimization will now start from the old solution
+        # rather than from new random states.
+        sql = product_factors_from_sq_mat(
+            sq_mat,
+            dim
+        )
+            
         
-    
-    
-    
+        
+        
     
     sp_mat = np.column_stack([s.full().ravel() for s in sp])  # shape: (d, n²)
-    
+    rhomm = rho.full()
+    rhomm = 0.5 * (rhomm + rhomm.conj().T)
+
+    rho_evals, rho_evecs = np.linalg.eigh(rhomm)
+
+    rho_tol = 1e-15
+    support = rho_evals > rho_tol
+
+    rho_support_vals = rho_evals[support]
+    rho_support_vecs = rho_evecs[:, support]
+    sqrt_support_vals = np.sqrt(rho_support_vals)
+    zero_tol = 100.0 * np.finfo(float).eps
     while abs(Fp-F)>dif and itera<iteramax:
         itera+=1
         
@@ -2149,37 +2296,51 @@ def uppersame(rho,dim,iteramax=2500,dif=10**(-8),r=None,qs=None,sqs=None,dec=Fal
 
         alfa  = u @ sp_weighted
 
-        pp=np.zeros(r,dtype=float)
-        spp=[]
-        for i in range(r):
-            pp[i]=np.linalg.norm(alfa[i])**2
-            spp.append(qutip.Qobj(alfa[i]/np.sqrt(pp[i])))       #updating decomposition of rho
-            spp[i].dims=[dim,[1]*len(dim)]
+        # norms of alpha
+        alpha_norms = np.linalg.norm(alfa, axis=1)
+        pp = alpha_norms**2
+
+        # normalization of non-zero rows of alpha
+        nonzero = alpha_norms > 0.0
+        spp_mat = np.empty_like(alfa, dtype=complex)
+
+        spp_mat[nonzero] = (
+            alfa[nonzero] / alpha_norms[nonzero, None]
+        )
+
+        # for 0 alpha we do not change anything
+        spp_mat[~nonzero] = sq_mat[:, ~nonzero].T
+
+        spp = [
+            qutip.Qobj(
+                spp_mat[i],
+                dims=[dim, [1] * len(dim)]
+            )
+            for i in range(r)
+        ]
 
 
         id_op=qutip.qeye(dim[0])
-        for ins in range(sepitera):                #Number of iterations in each run. 
-            tester=np.zeros(r)
-            for i in range(r):
+        active_indices = np.flatnonzero(pp > 0.0)
+        n_subsystems = len(dim)
+        contract = fast_tensor_with_identity_at
+
+        
+        for i in active_indices:
+            theta = spp[i]
+            factors = sql[i]
+
+            for _ in range(sepitera):   #Updating separable decomposition
+                for ni in range(n_subsystems):
+                    tt = contract(factors, ni, id_op)
+                    candidate = tt.dag() * theta
+                    candidate_norm = candidate.norm()
+
+                    if candidate_norm > zero_tol:
+                        candidate /= candidate_norm
+                        candidate.dims = [[dim[ni]], [1]]
+                        factors[ni] = candidate 
                 
-                theta=spp[i]
-                pra=sql[i].copy()
-                
-                pre=qutip.tensor(*pra)
-                pre.dims=[dim,[1]]
-                for ni in range(len(dim)):
-                    ten=sql[i]
-                    
-                    tt=fast_tensor_with_identity_at(ten, ni, id_op)
-                    
-                    sql[i][ni]=tt.dag()*theta
-                    sql[i][ni]=sql[i][ni].unit()                              #update separable decompsition
-                    sql[i][ni].dims=[[dim[ni]],[1]]
-                ppo=qutip.tensor(*sql[i])
-                if 1-abs(ppo.overlap(pre))<dif/1000:
-                    tester[i]=1
-            if np.all(tester==1):
-                break
                     
                
         
@@ -2196,39 +2357,66 @@ def uppersame(rho,dim,iteramax=2500,dif=10**(-8),r=None,qs=None,sqs=None,dec=Fal
         overlaps=np.diag(ov)
         overlaps = abs(overlaps)**2
         
-        sss=sum(pp*overlaps)
+        qq = pp * overlaps
+        sss = qq.sum()
 
+        if not (sss > 0.0):
+            raise FloatingPointError(
+                f"Cannot normalize qq in iteration {itera}: sss={sss}"
+            )
 
-        
-
-        
-        qq=pp*overlaps/sss
-        
+        qq /= sss
+                
 
 
         als_np = np.zeros((n, n), dtype=complex)
         als_np = np.einsum('i,ij,ik->jk', qq, sq_mat, np.conj(sq_mat))
         
         
-        rhomm = rho.full()
-        root_rho = scipy.linalg.sqrtm(rhomm)
-        inner = root_rho @ als_np @ root_rho
-        
-        root_inner = scipy.linalg.sqrtm(inner)
-        Fp=F
+        # Reprezentacja sigma = als_np w nośniku rho.
+        sigma_support = (
+            rho_support_vecs.conj().T
+            @ als_np
+            @ rho_support_vecs
+        )
 
-        F = np.real(np.trace(root_inner) ** 2)    #Computing fidelity
-        
+        # sqrt(rho) sigma sqrt(rho), ale tylko w nośniku rho.
+        inner_support = (
+            sqrt_support_vals[:, None]
+            * sigma_support
+            * sqrt_support_vals[None, :]
+        )
+
+        # Usunięcie antyhermitowskich błędów zaokrągleń.
+        inner_support = 0.5 * (
+            inner_support + inner_support.conj().T
+        )
+
+        inner_evals = np.linalg.eigvalsh(inner_support)
+
+        roundoff_tol = (
+            100
+            * np.finfo(float).eps
+            * max(1, len(rho_support_vals))
+        )
+
+        if inner_evals.min(initial=0.0) < -roundoff_tol:
+            raise FloatingPointError(
+                f"sqrt(rho) sigma sqrt(rho) is not PSD in iteration {itera}: "
+                f"minimum eigenvalue = {inner_evals.min()}"
+            )
+
+        inner_evals = np.clip(inner_evals, 0.0, None)
+
+        Fp = F
+        F = float(np.sum(np.sqrt(inner_evals)) ** 2)
+            
         sp_mat=copy.deepcopy(spp_matri.T)
         p=copy.deepcopy(pp)
         q=copy.deepcopy(qq)
         sq_mat=copy.deepcopy(sq_mat.T)
 
-    #Delating small numerical inprecisions
-    inner=qutip.Qobj(inner)
-    inner.tidyup()
-    root_inner = inner.sqrtm()
-    F = np.real((root_inner.tr()) ** 2) 
+    
     if dec:
         return [float(1-F),q,sq_mat]
     else:
@@ -2344,8 +2532,8 @@ def uppermult(rho,dim,iteramax=2000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fal
         raise ValueError("r should be an integer")
     if (not isinstance(dif,float)) or not (0<dif<1):
         raise ValueError("dif should be in interval (0,1)")
-    if (qs is None and (not sqs is None)) or (sqs is None and not (sqs is None)):
-        raise Exception("Both or none of the qs, sqs must be None.")
+    if (qs is None) != (sqs is None):
+        raise ValueError("Both or neither of qs and sqs must be provided.")
     if not (sqs is None) and r!=len(sqs.T):
         raise Exception("sqs and r should have the same number of elements")
     if not (qs is None) and r!=len(qs):
@@ -2381,7 +2569,7 @@ def uppermult(rho,dim,iteramax=2000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fal
     for i in range(r-min([r,n])):
         sp.append(qutip.Qobj(np.zeros(n)))
     for i in range(r):
-        sp[i].dims=[dim,[1,1]]
+        sp[i].dims = [dim, [1] * len(dim)]
     sql=[]          
     for i in range(r):                                 #Setting initial separable decomposition
             sqo=[]
@@ -2396,13 +2584,27 @@ def uppermult(rho,dim,iteramax=2000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fal
         q=np.random.rand(r)
         q=q/sum(q)
         sq_mat = np.column_stack([s.full().ravel() for s in sq])  # shape: (d, n²)
-    else:
-        q=qs
-        sq_mat = sqs
+    else: #warm start
+        q = np.array(qs, dtype=float, copy=True)
+        sq_mat = np.array(sqs, dtype=complex, copy=True)
+        sql = product_factors_from_sq_mat(sq_mat, dim)
     
     
     sp_mat = np.column_stack([s.full().ravel() for s in sp])  # shape: (d, n²)
-    
+
+    rhomm = rho.full()
+    rhomm = 0.5 * (rhomm + rhomm.conj().T)
+
+    rho_evals, rho_evecs = np.linalg.eigh(rhomm)
+    support = rho_evals > 1e-15
+
+    rho_support_vecs = rho_evecs[:, support]
+    sqrt_support_vals = np.sqrt(rho_evals[support])
+
+    zero_tol = 100.0 * np.finfo(float).eps
+    roundoff_tol = (
+        100 * np.finfo(float).eps * max(1, len(sqrt_support_vals))
+    )
     while abs(Fp-F)>dif and itera<iteramax:
         itera+=1
         
@@ -2433,91 +2635,110 @@ def uppermult(rho,dim,iteramax=2000,dif=10**(-7),r=None,qs=None,sqs=None,dec=Fal
 
         alfa  = u @ sp_weighted
 
-        pp=np.zeros(r,dtype=float)
-        spp=[]
-        for i in range(r):
-            pp[i]=np.linalg.norm(alfa[i])**2
-            spp.append(qutip.Qobj(alfa[i]/np.sqrt(pp[i])))      #updating decomposition of rho
-            spp[i].dims=[dim,[1]*len(dim)]
 
-#print(spp[len(sq)-1])
-        id_op=qutip.qeye(dim[0])
-        for ins in range(sepitera):                   #Number of iterations in each run. 
-            tester=np.zeros(r)
-            for i in range(r):
-                
-                theta=spp[i]
-                pra=sql[i].copy()
-                
-                pre=qutip.tensor(*pra)
-                pre.dims=[dim,[1]]
-                for ni in range(len(dim)):                              #update separable decompsition
-                    ten=sql[i]
-                    
-                    tt=tensor_with_identity_at(ten, ni)
-                    
-                    sql[i][ni]=tt.dag()*theta
-                    sql[i][ni]=sql[i][ni].unit()
-                    sql[i][ni].dims=[[dim[ni]],[1]]
-        
-                ppo=qutip.tensor(*sql[i])
-                if 1-abs(ppo.overlap(pre))<dif/1000:
-                    tester[i]=1
-            if np.all(tester==1):
-                break
-                      
-               
-        
-        qq=np.zeros(r,dtype=float)
-        sss = 0
-        overlaps = np.empty(r, dtype=float)
-        sq=[tensor(*kets) for kets in zip(sql)]
-        sq_mat = np.column_stack([s.full().ravel() for s in sq]).T  # shape: (d, n²)
+        alpha_norms = np.linalg.norm(alfa, axis=1)
+        pp = alpha_norms**2
+        nonzero = alpha_norms > 0.0
 
+        # Normalization of non-zero coefficients of rho.
+        spp_matri = np.empty_like(alfa, dtype=complex)
+        spp_matri[nonzero] = (
+            alfa[nonzero] / alpha_norms[nonzero, None]
+        )
 
+        # If coefficient is 0, we keep the vector
+        spp_matri[~nonzero] = sq_mat[:, ~nonzero].T
 
-        spp_matri = np.column_stack([s.full().ravel() for s in spp]).T
-        ov=np.conj(spp_matri) @ sq_mat.T
-        overlaps=np.diag(ov)
-        overlaps = abs(overlaps)**2
-        
-        sss=sum(pp*overlaps)
+        spp = [
+            qutip.Qobj(
+                spp_matri[i],
+                dims=[dim, [1] * len(dim)]
+            )
+            for i in range(r)
+        ]
 
+        active_indices = np.flatnonzero(pp > 0.0)
 
-        
+        # We keep the order of improvements
+        for ins in range(sepitera):
+            for i in active_indices:
+                theta = spp[i]
 
-        
-        qq=pp*overlaps/sss
-        
+                for ni in range(len(dim)):
+                    tt = tensor_with_identity_at(sql[i], ni)
+                    candidate = tt.dag() * theta
+                    candidate_norm = candidate.norm()
 
+                    # Zero norm vector is not normalized
+                    if candidate_norm > zero_tol:
+                        candidate /= candidate_norm
+                        candidate.dims = [[dim[ni]], [1]]
+                        sql[i][ni] = candidate
 
-        als_np = np.zeros((n, n), dtype=complex)
-        als_np = np.einsum('i,ij,ik->jk', qq, sq_mat, np.conj(sq_mat))
-        
-        
-        rhomm = rho.full()
-        root_rho = scipy.linalg.sqrtm(rhomm)
-        inner = root_rho @ als_np @ root_rho
-        
-        root_inner = scipy.linalg.sqrtm(inner)
-        Fp=F
+        sq = [tensor(*factors) for factors in sql]
+        sq_mat = np.column_stack(
+            [s.full().ravel() for s in sq]
+        ).T
 
-        F = np.real(np.trace(root_inner) ** 2)       #Computing fidelity
+        overlaps = np.abs(
+            np.einsum("ij,ij->i", spp_matri.conj(), sq_mat)
+        )**2
+
+        qq = pp * overlaps
+        sss = qq.sum()
+
+        if not np.isfinite(sss) or sss <= 0.0:
+            raise FloatingPointError(
+                f"Cannot normalize qq in iteration {itera}: sss={sss}"
+            )
+
+        qq /= sss
+
+        # separable state sigma
+        als_np = np.einsum(
+            "i,ij,ik->jk", qq, sq_mat, sq_mat.conj()
+        )
+
+        # Fidelity
+        sigma_support = (
+            rho_support_vecs.conj().T
+            @ als_np
+            @ rho_support_vecs
+        )
+
+        inner_support = (
+            sqrt_support_vals[:, None]
+            * sigma_support
+            * sqrt_support_vals[None, :]
+        )
+
+        inner_support = 0.5 * (
+            inner_support + inner_support.conj().T
+        )
+
+        inner_evals = np.linalg.eigvalsh(inner_support)
+
+        if inner_evals.min(initial=0.0) < -roundoff_tol:
+            raise FloatingPointError(
+                f"sqrt(rho) sigma sqrt(rho) is not PSD "
+                f"in iteration {itera}: "
+                f"minimum eigenvalue = {inner_evals.min()}"
+            )
+
+        inner_evals = np.clip(inner_evals, 0.0, None)
+
+        Fp = F
+        F = float(np.sum(np.sqrt(inner_evals))**2)
         
         sp_mat=copy.deepcopy(spp_matri.T)
         p=copy.deepcopy(pp)
         q=copy.deepcopy(qq)
         sq_mat=copy.deepcopy(sq_mat.T)
 
-    #Delating small numerical inprecisions
-    inner=qutip.Qobj(inner)
-    inner.tidyup()
-    root_inner = inner.sqrtm()
-    F = np.real((root_inner.tr()) ** 2) 
+    
     if dec:
         return [float(1-F),q,sq_mat]
     else:
         return float(1-F)
-
 
 
